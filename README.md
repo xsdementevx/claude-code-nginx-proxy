@@ -291,3 +291,186 @@ Do not publish the secret path. It is part of the access control model.
 Do not store Claude/Anthropic tokens on the server. This proxy is designed to pass client headers through to Anthropic.
 
 If Claude Code works in CLI but not in VS Code, fully close all VS Code processes and restart VS Code from a terminal that has the same environment variables.
+
+## 12. macOS setup for Claude Code
+
+Use this section after the server is already installed and you have the final proxy URL:
+
+```text
+https://YOUR_DOMAIN/YOUR_SECRET_PATH
+```
+
+Claude Code reads `ANTHROPIC_BASE_URL` to route API calls through a proxy or gateway. For a persistent setup, prefer `~/.claude/settings.json` because it is read at Claude Code startup no matter how the CLI was launched.
+
+### Shared user config
+
+Create or edit:
+
+```bash
+mkdir -p ~/.claude
+nano ~/.claude/settings.json
+```
+
+Minimal proxy config:
+
+```json
+{
+  "env": {
+    "ANTHROPIC_BASE_URL": "https://YOUR_DOMAIN/YOUR_SECRET_PATH",
+    "API_TIMEOUT_MS": "1200000"
+  }
+}
+```
+
+If your setup uses a Claude Code OAuth token, add it here:
+
+```json
+{
+  "env": {
+    "ANTHROPIC_BASE_URL": "https://YOUR_DOMAIN/YOUR_SECRET_PATH",
+    "CLAUDE_CODE_OAUTH_TOKEN": "your-token",
+    "API_TIMEOUT_MS": "1200000"
+  }
+}
+```
+
+Keep this file private:
+
+```bash
+chmod 700 ~/.claude
+chmod 600 ~/.claude/settings.json
+```
+
+### CLI on macOS
+
+Install Claude Code using the native installer:
+
+```bash
+curl -fsSL https://claude.ai/install.sh | bash
+```
+
+Or use Homebrew:
+
+```bash
+brew install --cask claude-code
+```
+
+Homebrew installations do not auto-update, so upgrade manually:
+
+```bash
+brew upgrade claude-code
+```
+
+Start a new terminal after editing `~/.claude/settings.json`, then verify:
+
+```bash
+claude /status
+```
+
+The status output should show your custom Anthropic base URL.
+
+For one terminal session only:
+
+```bash
+export ANTHROPIC_BASE_URL="https://YOUR_DOMAIN/YOUR_SECRET_PATH"
+claude
+```
+
+To make shell exports persistent, add them to `~/.zshrc`:
+
+```bash
+echo 'export ANTHROPIC_BASE_URL="https://YOUR_DOMAIN/YOUR_SECRET_PATH"' >> ~/.zshrc
+source ~/.zshrc
+```
+
+The settings file is still recommended because GUI apps and IDEs do not always inherit your interactive shell environment.
+
+### Claude Desktop app on macOS
+
+Install the Claude Desktop app from Anthropic and open the Code tab. The Desktop app includes Claude Code for the Code tab, so the separate CLI install is only required if you also want the `claude` command in Terminal.
+
+For local Desktop Code sessions, configure proxy variables in one of two ways:
+
+1. Recommended for Claude sessions: put `ANTHROPIC_BASE_URL` in `~/.claude/settings.json` as shown above.
+2. Recommended when preview/dev servers also need variables: open the environment dropdown in the Desktop prompt box, hover over Local, click the gear icon, and add variables in the local environment editor.
+
+Important macOS behavior: when Desktop is launched from Dock or Finder, it does not inherit your full shell environment. It reads shell profile files only for `PATH` and a fixed set of Claude Code variables. If a variable is not taking effect, set it in `~/.claude/settings.json` or in Desktop's local environment editor, then quit and reopen the app.
+
+Desktop session types:
+
+- Local: runs on the Mac and can use the local proxy config.
+- SSH: runs Claude Code on a remote Linux/macOS host; configure the proxy on that remote host too.
+- Cloud/Remote: runs on Anthropic-managed infrastructure; local machine env vars do not automatically apply.
+
+### VS Code extension on macOS
+
+Install the Claude Code extension:
+
+1. Open VS Code.
+2. Press `Cmd+Shift+X`.
+3. Search for `Claude Code`.
+4. Install and reload VS Code if prompted.
+
+The extension bundles its own Claude Code binary for the graphical panel. To use `claude` in VS Code's integrated terminal, install the standalone CLI separately.
+
+Recommended proxy setup:
+
+1. Put `ANTHROPIC_BASE_URL` in `~/.claude/settings.json`.
+2. Fully quit VS Code:
+
+```bash
+osascript -e 'quit app "Visual Studio Code"'
+```
+
+3. Start VS Code from a terminal:
+
+```bash
+cd /path/to/project
+code .
+```
+
+Launching with `code .` helps VS Code inherit terminal environment variables. The settings file remains the more reliable option for shared CLI/extension configuration.
+
+If you configure provider/proxy auth through environment variables and the extension still shows a login prompt:
+
+- open VS Code Settings with `Cmd+,`
+- search `Claude Code login`
+- enable `Disable Login Prompt` for third-party/provider setups
+- reload the window with `Cmd+Shift+P` -> `Developer: Reload Window`
+
+The extension also has an `environmentVariables` setting, but use Claude Code settings files for shared configuration between CLI and extension.
+
+### Quick macOS verification
+
+Check the proxy itself:
+
+```bash
+curl -i https://YOUR_DOMAIN/health
+curl -i https://YOUR_DOMAIN/
+```
+
+Expected:
+
+- `/health` returns `200 OK`
+- `/` returns `404`
+
+Check Claude Code:
+
+```bash
+claude /status
+```
+
+If the CLI works but Desktop or VS Code does not:
+
+1. Quit the app completely.
+2. Confirm `~/.claude/settings.json` contains the proxy URL.
+3. Reopen the app.
+4. For VS Code, prefer launching with `code .` from Terminal.
+5. Check that you are using the Code tab in Desktop, not a normal Chat tab.
+
+### Official docs used for this section
+
+- Claude Code environment variables: `ANTHROPIC_BASE_URL`, `ANTHROPIC_AUTH_TOKEN`, and settings-file `env`.
+- Claude Code setup on macOS: native installer and Homebrew.
+- Claude Code Desktop: local environment editor, shared settings, and macOS environment inheritance behavior.
+- VS Code extension: bundled CLI, standalone CLI requirement for integrated terminal, and extension environment settings.

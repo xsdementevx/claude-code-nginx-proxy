@@ -1,0 +1,6 @@
+# Local secrets and generated connection files
+*.env
+*.log
+*connection*.txt
+.DS_Store
+Thumbs.db

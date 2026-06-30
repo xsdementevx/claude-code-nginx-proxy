@@ -56,15 +56,23 @@ Resolve-DnsName claudecode.example.com
 
 If your domain has an `AAAA` record, make sure it also points to this server or remove it. Let's Encrypt and some clients may prefer IPv6 when it exists.
 
-## 3. Run the installer
+## 3. Run the installer from your computer
 
-On a fresh server, run:
+From your computer, run one command. Replace `SERVER_IP`, `claudecode.example.com`, and `admin@example.com`.
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/xsdementevx/claude-code-nginx-proxy/main/install.sh | sudo bash
+ssh -t root@SERVER_IP "curl -fsSL https://raw.githubusercontent.com/xsdementevx/claude-code-nginx-proxy/main/install.sh | bash -s -- --domain claudecode.example.com --email admin@example.com"
 ```
 
-The installer asks only for:
+This works from macOS, Linux, Windows PowerShell, and Windows Terminal if `ssh` is installed.
+
+Interactive mode:
+
+```bash
+ssh -t root@SERVER_IP "curl -fsSL https://raw.githubusercontent.com/xsdementevx/claude-code-nginx-proxy/main/install.sh | bash"
+```
+
+The installer then asks only for:
 
 - proxy domain, for example `claudecode.example.com`
 - Let's Encrypt email
@@ -79,10 +87,10 @@ Everything else is automatic:
 - existing SSH keys are copied from the current/root user to `admin`
 - connection details are saved to `/root/claude-proxy-connection.txt`
 
-One-command mode:
+If your VPS provider gives you a non-root sudo user instead of root:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/xsdementevx/claude-code-nginx-proxy/main/install.sh | sudo bash -s -- --domain claudecode.example.com --email admin@example.com
+ssh -t USER@SERVER_IP "curl -fsSL https://raw.githubusercontent.com/xsdementevx/claude-code-nginx-proxy/main/install.sh | sudo bash -s -- --domain claudecode.example.com --email admin@example.com"
 ```
 
 Manual copy mode:
@@ -107,7 +115,7 @@ sudo whoami
 Only after that works, you can rerun with:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/xsdementevx/claude-code-nginx-proxy/main/install.sh | sudo bash -s -- --domain claudecode.example.com --email admin@example.com --harden-ssh
+ssh -t root@SERVER_IP "curl -fsSL https://raw.githubusercontent.com/xsdementevx/claude-code-nginx-proxy/main/install.sh | bash -s -- --domain claudecode.example.com --email admin@example.com --harden-ssh"
 ```
 
 This disables root login and password auth, and allows SSH only for `admin`.

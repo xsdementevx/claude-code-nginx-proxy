@@ -58,10 +58,13 @@ done
 prompt_if_missing() {
   local var_name="$1" label="$2" value
   if [[ -z "${!var_name}" ]]; then
-    if [[ ! -t 0 ]]; then
+    if [[ -r /dev/tty ]]; then
+      read -r -p "${label}: " value </dev/tty
+    elif [[ -t 0 ]]; then
+      read -r -p "${label}: " value
+    else
       die "${label} is required. Pass --${var_name,,}."
     fi
-    read -r -p "${label}: " value
     [[ -n "${value}" ]] || die "${label} is required."
     printf -v "${var_name}" '%s' "${value}"
   fi

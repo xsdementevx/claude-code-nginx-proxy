@@ -61,8 +61,7 @@ If your domain has an `AAAA` record, make sure it also points to this server or 
 On a fresh server, run:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/xsdementevx/claude-code-nginx-proxy/main/install.sh -o /tmp/claude-proxy-install.sh
-sudo bash /tmp/claude-proxy-install.sh
+curl -fsSL https://raw.githubusercontent.com/xsdementevx/claude-code-nginx-proxy/main/install.sh | sudo bash
 ```
 
 The installer asks only for:
@@ -108,7 +107,7 @@ sudo whoami
 Only after that works, you can rerun with:
 
 ```bash
-sudo bash /tmp/claude-proxy-install.sh --domain claudecode.example.com --email admin@example.com --harden-ssh
+curl -fsSL https://raw.githubusercontent.com/xsdementevx/claude-code-nginx-proxy/main/install.sh | sudo bash -s -- --domain claudecode.example.com --email admin@example.com --harden-ssh
 ```
 
 This disables root login and password auth, and allows SSH only for `admin`.

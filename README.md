@@ -11,6 +11,153 @@ This kit sets up a lightweight Claude Code proxy like the current production ser
 
 The installer is `install.sh`.
 
+## Beginner quick start
+
+Use this if you just bought a VPS and do not want to learn server administration.
+
+You need three things:
+
+```text
+SERVER_IP     The IP address from your VPS provider panel
+DOMAIN        A domain or subdomain you control, for example claude.example.com
+EMAIL         Your email for the free HTTPS certificate
+```
+
+### Step 1. Point the domain to the VPS
+
+Open your domain/DNS panel and create one record:
+
+```text
+Type: A
+Name: claude
+Value: SERVER_IP
+```
+
+Example:
+
+```text
+Domain: example.com
+Name: claude
+Value: 203.0.113.10
+Result: claude.example.com
+```
+
+If you see an `AAAA` record for the same name and you do not use IPv6, delete it.
+
+Wait 5-15 minutes.
+
+### Step 2. Open a terminal on your computer
+
+Windows:
+
+```text
+Start menu -> PowerShell
+```
+
+macOS:
+
+```text
+Applications -> Utilities -> Terminal
+```
+
+Linux:
+
+```text
+Open Terminal
+```
+
+### Step 3. Run one command from your computer
+
+Replace only `SERVER_IP`:
+
+```bash
+ssh -t root@SERVER_IP "curl -fsSL https://raw.githubusercontent.com/xsdementevx/claude-code-nginx-proxy/main/install.sh | bash"
+```
+
+If your VPS provider gave you a username that is not `root`, use it:
+
+```bash
+ssh -t USER@SERVER_IP "curl -fsSL https://raw.githubusercontent.com/xsdementevx/claude-code-nginx-proxy/main/install.sh | sudo bash"
+```
+
+### Step 4. Answer two questions
+
+When the installer asks:
+
+```text
+Proxy domain:
+```
+
+enter your domain:
+
+```text
+claude.example.com
+```
+
+When it asks:
+
+```text
+Let's Encrypt email:
+```
+
+enter your email:
+
+```text
+you@example.com
+```
+
+### Step 5. Copy the final Claude Code setting
+
+At the end you will see something like:
+
+```bash
+export ANTHROPIC_BASE_URL="https://claude.example.com/random-secret-path"
+```
+
+On macOS/Linux, run it before Claude Code:
+
+```bash
+export ANTHROPIC_BASE_URL="https://claude.example.com/random-secret-path"
+claude
+```
+
+On Windows PowerShell:
+
+```powershell
+$env:ANTHROPIC_BASE_URL = "https://claude.example.com/random-secret-path"
+claude
+```
+
+### How to know it worked
+
+Open this in your browser:
+
+```text
+https://claude.example.com/health
+```
+
+You should see:
+
+```text
+OK
+```
+
+Open the root page:
+
+```text
+https://claude.example.com/
+```
+
+It should show `404`. That is normal.
+
+### Common beginner problems
+
+- SSH says password is wrong: use the root password or SSH key from your VPS provider.
+- Certificate fails: the domain does not point to the VPS yet.
+- Certificate fails with IPv6: remove the wrong `AAAA` DNS record.
+- Browser health page does not open: check that the VPS firewall/provider allows ports `80` and `443`.
+- You closed the final output: reconnect and run `sudo cat /root/claude-proxy-connection.txt`.
+
 ## 1. Prepare a VPS
 
 Use a fresh Ubuntu/Debian server. The current reference server is Ubuntu with:

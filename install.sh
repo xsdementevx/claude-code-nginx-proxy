@@ -278,6 +278,7 @@ upstream anthropic_backend {
 server {
     listen 443 ssl default_server;
     listen [::]:443 ssl default_server;
+    http2 on;
     server_name _;
 
     ssl_certificate     /etc/letsencrypt/live/${PUBLIC_IP}/fullchain.pem;
@@ -285,6 +286,7 @@ server {
     ssl_trusted_certificate /etc/letsencrypt/live/${PUBLIC_IP}/chain.pem;
 
     ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_ciphers ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305;
     ssl_prefer_server_ciphers off;
     resolver 1.1.1.1 8.8.8.8 valid=300s;
 

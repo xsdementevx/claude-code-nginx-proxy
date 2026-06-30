@@ -1,57 +1,24 @@
-# Claude Code nginx proxy
+# HTTPS-прокси Claude Code без домена
 
-This kit sets up a lightweight Claude Code proxy like the current production server:
+Скрипт настраивает чистый Ubuntu/Debian VPS как HTTPS-прокси для Claude Code:
 
-- Ubuntu/Debian VPS
-- `nginx` terminates HTTPS in domain mode
-- a random secret URL path hides the proxy endpoint
-- requests under that path are proxied to `https://api.anthropic.com`
-- Claude Code auth headers pass through from your local machine
-- no Anthropic token is stored on the server
+- домен не нужен;
+- используется публичный IP сервера;
+- выпускается Let's Encrypt IP certificate;
+- nginx проксирует запросы на `https://api.anthropic.com`;
+- токен Anthropic не хранится на сервере.
 
-The installer is `install.sh`.
+IP-сертификаты Let's Encrypt являются short-lived: они действуют примерно 6 дней. Certbot ставит автообновление, поэтому сервер должен оставаться включенным, а порты `80` и `443` должны быть открыты.
 
-## Русский быстрый старт
-
-Самый простой тест без домена:
-
-```bash
-ssh -t root@IP_ТВОЕГО_VPS "curl -fsSL https://raw.githubusercontent.com/xsdementevx/claude-code-nginx-proxy/main/install.sh | bash -s -- --ip-only"
-```
-
-Он выдаст строку вида:
-
-```bash
-export ANTHROPIC_BASE_URL="http://203.0.113.10/secret-path"
-```
-
-Минус: это HTTP без шифрования между твоим компьютером и VPS. Для постоянного использования лучше вариант с доменом ниже.
-
-Если ты хочешь HTTPS, тебе нужны:
+## Что нужно
 
 ```text
-IP сервера     Например 203.0.113.10
-Домен          Например claude.example.com
-Почта          Например you@example.com
+IP VPS       Например 203.0.113.10
+SSH-доступ   root или пользователь с sudo
+Email        Для Let's Encrypt
 ```
 
-### 1. Привяжи домен к серверу
-
-В панели домена создай DNS-запись:
-
-```text
-Type: A
-Name: claude
-Value: IP_ТВОЕГО_VPS
-```
-
-Если домен `example.com`, получится `claude.example.com`.
-
-Если есть `AAAA` для этого же имени и ты не настраивал IPv6, удали `AAAA`.
-
-Подожди 5-15 минут.
-
-### 2. Запусти установку со своего компьютера
+## Установка с компьютера
 
 Открой PowerShell на Windows или Terminal на macOS/Linux.
 
@@ -61,50 +28,58 @@ Value: IP_ТВОЕГО_VPS
 ssh -t root@IP_ТВОЕГО_VPS "curl -fsSL https://raw.githubusercontent.com/xsdementevx/claude-code-nginx-proxy/main/install.sh | bash"
 ```
 
-Скрипт спросит:
+Если у тебя не `root`, а обычный sudo-пользователь:
 
-```text
-Proxy domain:
+```bash
+ssh -t USER@IP_ТВОЕГО_VPS "curl -fsSL https://raw.githubusercontent.com/xsdementevx/claude-code-nginx-proxy/main/install.sh | sudo bash"
 ```
 
-Введи домен:
-
-```text
-claude.example.com
-```
-
-Потом спросит:
+Скрипт спросит email:
 
 ```text
 Let's Encrypt email:
 ```
 
-Введи почту:
+Введи свой email, например:
 
 ```text
 you@example.com
 ```
 
-### 3. Скопируй готовую строку
+## Готовая строка подключения
 
 В конце установки появится строка вида:
 
 ```bash
-export ANTHROPIC_BASE_URL="https://claude.example.com/secret-path"
+export ANTHROPIC_BASE_URL="https://203.0.113.10/secret-path"
 ```
 
-Для Windows PowerShell используй такой формат:
+Скопируй ее и запусти Claude Code:
+
+```bash
+export ANTHROPIC_BASE_URL="https://203.0.113.10/secret-path"
+claude
+```
+
+Для Windows PowerShell:
 
 ```powershell
-$env:ANTHROPIC_BASE_URL = "https://claude.example.com/secret-path"
+$env:ANTHROPIC_BASE_URL = "https://203.0.113.10/secret-path"
+claude
 ```
 
-### 4. Проверь
+Если закрыл вывод установщика, подключись к серверу и выполни:
+
+```bash
+sudo cat /root/claude-proxy-connection.txt
+```
+
+## Проверка
 
 Открой в браузере:
 
 ```text
-https://claude.example.com/health
+https://IP_ТВОЕГО_VPS/health
 ```
 
 Должно быть:
@@ -113,668 +88,77 @@ https://claude.example.com/health
 OK
 ```
 
-Если видишь `404` на `https://claude.example.com/`, это нормально.
-
-## Beginner quick start
-
-Use this if you just bought a VPS and do not want to learn server administration.
-
-The simplest test does not need a domain:
-
-```bash
-ssh -t root@SERVER_IP "curl -fsSL https://raw.githubusercontent.com/xsdementevx/claude-code-nginx-proxy/main/install.sh | bash -s -- --ip-only"
-```
-
-It prints:
-
-```bash
-export ANTHROPIC_BASE_URL="http://203.0.113.10/random-secret-path"
-```
-
-Tradeoff: this is plain HTTP between your computer and the VPS. For regular use, use the HTTPS domain setup below.
-
-For HTTPS, you need three things:
+Корневой адрес должен отдавать `404`:
 
 ```text
-SERVER_IP     The IP address from your VPS provider panel
-DOMAIN        A domain or subdomain you control, for example claude.example.com
-EMAIL         Your email for the free HTTPS certificate
+https://IP_ТВОЕГО_VPS/
 ```
 
-### Step 1. Point the domain to the VPS
+Это нормально: прокси работает только по секретному пути.
 
-Open your domain/DNS panel and create one record:
+## Авторизация через нужный браузер
 
-```text
-Type: A
-Name: claude
-Value: SERVER_IP
-```
+Если Claude Code открывает обычный браузер, а тебе нужен антидетект-профиль:
 
-Example:
-
-```text
-Domain: example.com
-Name: claude
-Value: 203.0.113.10
-Result: claude.example.com
-```
-
-If you see an `AAAA` record for the same name and you do not use IPv6, delete it.
-
-Wait 5-15 minutes.
-
-### Step 2. Open a terminal on your computer
-
-Windows:
-
-```text
-Start menu -> PowerShell
-```
-
-macOS:
-
-```text
-Applications -> Utilities -> Terminal
-```
-
-Linux:
-
-```text
-Open Terminal
-```
-
-### Step 3. Run one command from your computer
-
-Replace only `SERVER_IP`:
-
-```bash
-ssh -t root@SERVER_IP "curl -fsSL https://raw.githubusercontent.com/xsdementevx/claude-code-nginx-proxy/main/install.sh | bash"
-```
-
-If your VPS provider gave you a username that is not `root`, use it:
-
-```bash
-ssh -t USER@SERVER_IP "curl -fsSL https://raw.githubusercontent.com/xsdementevx/claude-code-nginx-proxy/main/install.sh | sudo bash"
-```
-
-### Step 4. Answer two questions
-
-When the installer asks:
-
-```text
-Proxy domain:
-```
-
-enter your domain:
-
-```text
-claude.example.com
-```
-
-When it asks:
-
-```text
-Let's Encrypt email:
-```
-
-enter your email:
-
-```text
-you@example.com
-```
-
-### Step 5. Copy the final Claude Code setting
-
-At the end you will see something like:
-
-```bash
-export ANTHROPIC_BASE_URL="https://claude.example.com/random-secret-path"
-```
-
-On macOS/Linux, run it before Claude Code:
-
-```bash
-export ANTHROPIC_BASE_URL="https://claude.example.com/random-secret-path"
-claude
-```
-
-On Windows PowerShell:
-
-```powershell
-$env:ANTHROPIC_BASE_URL = "https://claude.example.com/random-secret-path"
-claude
-```
-
-### Step 6. If you need the same anti-detect browser for login
-
-Claude Code may open your normal default browser during login. If you need authorization in a specific anti-detect browser profile, do this instead:
-
-1. Open the target anti-detect browser profile.
-2. In terminal, run:
+1. Открой нужный профиль браузера.
+2. В терминале выполни:
 
 ```bash
 claude setup-token
 ```
 
-3. When Claude Code shows or offers a browser login URL, copy it.
-4. Paste that URL into the anti-detect browser profile.
-5. Finish login there.
-6. If the browser shows a code, paste it back into the terminal.
-7. Claude Code prints a long token. Save it somewhere private.
+3. Скопируй ссылку авторизации из терминала.
+4. Открой ее в нужном браузерном профиле.
+5. Заверши вход.
+6. Если появится код, вставь его обратно в терминал.
+7. Claude Code покажет токен.
 
-Use it with the proxy:
+Запуск с токеном:
 
 ```bash
-export ANTHROPIC_BASE_URL="https://claude.example.com/random-secret-path"
+export ANTHROPIC_BASE_URL="https://203.0.113.10/secret-path"
 export CLAUDE_CODE_OAUTH_TOKEN="PASTE_TOKEN_HERE"
 claude
 ```
 
-On Windows PowerShell:
+PowerShell:
 
 ```powershell
-$env:ANTHROPIC_BASE_URL = "https://claude.example.com/random-secret-path"
+$env:ANTHROPIC_BASE_URL = "https://203.0.113.10/secret-path"
 $env:CLAUDE_CODE_OAUTH_TOKEN = "PASTE_TOKEN_HERE"
 claude
 ```
 
-Do not commit, publish, or send this token to anyone. Treat it like a password.
+Токен нельзя публиковать, коммитить или отправлять другим людям.
 
-### How to know it worked
+## Что делает скрипт
 
-Open this in your browser:
+- определяет публичный IPv4 сервера;
+- устанавливает `nginx`, `certbot`, `ufw`, `fail2ban`, `chrony`;
+- выпускает Let's Encrypt certificate на IP через профиль `shortlived`;
+- создает случайный секретный URL-путь;
+- настраивает HTTPS-прокси к Anthropic API;
+- создает пользователя `admin`, если возможно;
+- копирует SSH-ключи root/sudo-пользователя в `admin`;
+- сохраняет итоговую строку в `/root/claude-proxy-connection.txt`.
 
-```text
-https://claude.example.com/health
-```
-
-In IP-only mode, use `http://SERVER_IP/health`.
-
-You should see:
-
-```text
-OK
-```
-
-Open the root page:
-
-```text
-https://claude.example.com/
-```
-
-It should show `404`. That is normal.
-
-### Common beginner problems
-
-- SSH says password is wrong: use the root password or SSH key from your VPS provider.
-- Certificate fails in HTTPS mode: the domain does not point to the VPS yet.
-- Certificate fails in HTTPS mode with IPv6: remove the wrong `AAAA` DNS record.
-- Browser health page does not open: check that the VPS firewall/provider allows ports `80` and `443`.
-- You closed the final output: reconnect and run `sudo cat /root/claude-proxy-connection.txt`.
-
-## 1. Prepare a VPS
-
-Use a fresh Ubuntu/Debian server. The current reference server is Ubuntu with:
-
-- `nginx`
-- `certbot`
-- `ufw`
-- `fail2ban`
-- `chrony`
-
-You need initial SSH access as `root` or another sudo-capable user.
-
-## 2. Create a domain for HTTPS mode
-
-Skip this section if you installed with `--ip-only`.
-
-Create a DNS `A` record pointing to the VPS public IPv4 address.
-
-Example:
-
-```text
-Type: A
-Name: claudecode
-Value: 203.0.113.10
-TTL: Auto or 300
-```
-
-If your domain is `example.com`, this creates:
-
-```text
-claudecode.example.com
-```
-
-Wait until DNS resolves:
+Опционально, после проверки входа `ssh admin@IP_ТВОЕГО_VPS`, можно усилить SSH:
 
 ```bash
-dig +short claudecode.example.com
+ssh -t root@IP_ТВОЕГО_VPS "curl -fsSL https://raw.githubusercontent.com/xsdementevx/claude-code-nginx-proxy/main/install.sh | bash -s -- --harden-ssh"
 ```
 
-The output must be your VPS IP. On Windows:
+## Частые проблемы
 
-```powershell
-Resolve-DnsName claudecode.example.com
-```
+- `ssh` не подключается: проверь IP, пароль, SSH-ключ или имя пользователя из панели VPS.
+- Сертификат не выпускается: проверь, что провайдер VPS открыл входящий порт `80`.
+- Проверка HTTPS не открывается: проверь, что открыты входящие порты `80` и `443`.
+- Certbot ругается на `--ip-address` или `shortlived`: на сервер поставился старый Certbot; скрипт ставит Certbot через snap, но на некоторых минимальных образах VPS может потребоваться перезапустить установку после установки `snapd`.
 
-If your domain has an `AAAA` record, make sure it also points to this server or remove it. Let's Encrypt and some clients may prefer IPv6 when it exists.
+## Локальный запуск скрипта
 
-## 3. Run the installer from your computer
-
-From your computer, run one command. Replace only `SERVER_IP`.
+Если ты клонировал репозиторий:
 
 ```bash
-ssh -t root@SERVER_IP "curl -fsSL https://raw.githubusercontent.com/xsdementevx/claude-code-nginx-proxy/main/install.sh | bash"
+sudo bash install.sh
 ```
-
-This works from macOS, Linux, Windows PowerShell, and Windows Terminal if `ssh` is installed.
-
-The installer asks for missing required values:
-
-- proxy domain, for example `claude.example.com`
-- Let's Encrypt email, for example `you@example.com`
-
-Everything else is automatic:
-
-- secret URL path is generated
-- SSH port is detected
-- packages are installed
-- `nginx`, TLS, `ufw`, `fail2ban`, `sysctl`, and `chrony` are configured
-- `admin` sudo user is created if possible
-- existing SSH keys are copied from the current/root user to `admin`
-- connection details are saved to `/root/claude-proxy-connection.txt`
-
-If your VPS provider gives you a non-root sudo user instead of root:
-
-```bash
-ssh -t USER@SERVER_IP "curl -fsSL https://raw.githubusercontent.com/xsdementevx/claude-code-nginx-proxy/main/install.sh | sudo bash"
-```
-
-Manual copy mode:
-
-```bash
-scp install.sh root@SERVER_IP:/root/
-ssh root@SERVER_IP
-sudo bash /root/install.sh
-```
-
-## 4. Optional SSH hardening
-
-By default, the installer does not disable root/password SSH. This avoids lockouts.
-
-After install, test the created admin user from another terminal:
-
-```bash
-ssh admin@YOUR_DOMAIN
-sudo whoami
-```
-
-Only after that works, you can rerun with:
-
-```bash
-ssh -t root@SERVER_IP "curl -fsSL https://raw.githubusercontent.com/xsdementevx/claude-code-nginx-proxy/main/install.sh | bash -s -- --harden-ssh"
-```
-
-This disables root login and password auth, and allows SSH only for `admin`.
-
-## 5. What the server config looks like
-
-The generated nginx site is:
-
-```text
-/etc/nginx/sites-available/claude-proxy
-/etc/nginx/sites-enabled/claude-proxy
-```
-
-It serves:
-
-```text
-https://YOUR_DOMAIN/health
-```
-
-and proxies only:
-
-```text
-https://YOUR_DOMAIN/YOUR_SECRET_PATH/*
-```
-
-The root path returns `404` by design.
-
-## 6. Use with Claude Code
-
-After install, the server prints and saves connection details to:
-
-```text
-/root/claude-proxy-connection.txt
-```
-
-On Linux/macOS:
-
-```bash
-export ANTHROPIC_BASE_URL="https://YOUR_DOMAIN/YOUR_SECRET_PATH"
-claude
-```
-
-On Windows PowerShell:
-
-```powershell
-$env:ANTHROPIC_BASE_URL = "https://YOUR_DOMAIN/YOUR_SECRET_PATH"
-claude
-```
-
-If your Claude Code setup needs an OAuth token:
-
-```bash
-export ANTHROPIC_BASE_URL="https://YOUR_DOMAIN/YOUR_SECRET_PATH"
-export CLAUDE_CODE_OAUTH_TOKEN="your-token"
-claude
-```
-
-You can also put the env vars into `~/.claude/settings.json`:
-
-```json
-{
-  "env": {
-    "ANTHROPIC_BASE_URL": "https://YOUR_DOMAIN/YOUR_SECRET_PATH",
-    "CLAUDE_CODE_OAUTH_TOKEN": "your-token"
-  }
-}
-```
-
-## 7. Verify
-
-Health check:
-
-```bash
-curl -i https://YOUR_DOMAIN/health
-```
-
-Expected:
-
-```text
-HTTP/2 200
-OK
-```
-
-Root should not expose anything:
-
-```bash
-curl -i https://YOUR_DOMAIN/
-```
-
-Expected:
-
-```text
-HTTP/2 404
-```
-
-Claude Code status:
-
-```bash
-claude /status
-```
-
-Check that the base URL is your proxy URL.
-
-## 8. Operations
-
-Nginx status:
-
-```bash
-sudo systemctl status nginx
-```
-
-Reload nginx after manual config edits:
-
-```bash
-sudo nginx -t
-sudo systemctl reload nginx
-```
-
-Logs:
-
-```bash
-sudo tail -f /var/log/nginx/claude-proxy-access.log
-sudo tail -f /var/log/nginx/claude-proxy-error.log
-```
-
-Firewall:
-
-```bash
-sudo ufw status verbose
-```
-
-Fail2ban:
-
-```bash
-sudo fail2ban-client status
-sudo fail2ban-client status sshd
-```
-
-Certificates:
-
-```bash
-sudo certbot certificates
-sudo systemctl list-timers | grep certbot
-```
-
-## 9. Rotate the secret path
-
-Run the installer again and choose a new secret path, or edit:
-
-```text
-/etc/nginx/sites-available/claude-proxy
-```
-
-Change both occurrences of the old secret path:
-
-```nginx
-location /NEW_SECRET_PATH/ {
-    rewrite ^/NEW_SECRET_PATH/(.*)$ /$1 break;
-}
-
-location = /NEW_SECRET_PATH {
-    return 301 /NEW_SECRET_PATH/;
-}
-```
-
-Then:
-
-```bash
-sudo nginx -t
-sudo systemctl reload nginx
-```
-
-Update your local `ANTHROPIC_BASE_URL`.
-
-## 10. Important notes
-
-Do not publish the secret path. It is part of the access control model.
-
-Do not store Claude/Anthropic tokens on the server. This proxy is designed to pass client headers through to Anthropic.
-
-If Claude Code works in CLI but not in VS Code, fully close all VS Code processes and restart VS Code from a terminal that has the same environment variables.
-
-## 11. macOS setup for Claude Code
-
-Use this section after the server is already installed and you have the final proxy URL:
-
-```text
-https://YOUR_DOMAIN/YOUR_SECRET_PATH
-```
-
-Claude Code reads `ANTHROPIC_BASE_URL` to route API calls through a proxy or gateway. For a persistent setup, prefer `~/.claude/settings.json` because it is read at Claude Code startup no matter how the CLI was launched.
-
-### Shared user config
-
-Create or edit:
-
-```bash
-mkdir -p ~/.claude
-nano ~/.claude/settings.json
-```
-
-Minimal proxy config:
-
-```json
-{
-  "env": {
-    "ANTHROPIC_BASE_URL": "https://YOUR_DOMAIN/YOUR_SECRET_PATH",
-    "API_TIMEOUT_MS": "1200000"
-  }
-}
-```
-
-If your setup uses a Claude Code OAuth token, add it here:
-
-```json
-{
-  "env": {
-    "ANTHROPIC_BASE_URL": "https://YOUR_DOMAIN/YOUR_SECRET_PATH",
-    "CLAUDE_CODE_OAUTH_TOKEN": "your-token",
-    "API_TIMEOUT_MS": "1200000"
-  }
-}
-```
-
-Keep this file private:
-
-```bash
-chmod 700 ~/.claude
-chmod 600 ~/.claude/settings.json
-```
-
-### CLI on macOS
-
-Install Claude Code using the native installer:
-
-```bash
-curl -fsSL https://claude.ai/install.sh | bash
-```
-
-Or use Homebrew:
-
-```bash
-brew install --cask claude-code
-```
-
-Homebrew installations do not auto-update, so upgrade manually:
-
-```bash
-brew upgrade claude-code
-```
-
-Start a new terminal after editing `~/.claude/settings.json`, then verify:
-
-```bash
-claude /status
-```
-
-The status output should show your custom Anthropic base URL.
-
-For one terminal session only:
-
-```bash
-export ANTHROPIC_BASE_URL="https://YOUR_DOMAIN/YOUR_SECRET_PATH"
-claude
-```
-
-To make shell exports persistent, add them to `~/.zshrc`:
-
-```bash
-echo 'export ANTHROPIC_BASE_URL="https://YOUR_DOMAIN/YOUR_SECRET_PATH"' >> ~/.zshrc
-source ~/.zshrc
-```
-
-The settings file is still recommended because GUI apps and IDEs do not always inherit your interactive shell environment.
-
-### Claude Desktop app on macOS
-
-Install the Claude Desktop app from Anthropic and open the Code tab. The Desktop app includes Claude Code for the Code tab, so the separate CLI install is only required if you also want the `claude` command in Terminal.
-
-For local Desktop Code sessions, configure proxy variables in one of two ways:
-
-1. Recommended for Claude sessions: put `ANTHROPIC_BASE_URL` in `~/.claude/settings.json` as shown above.
-2. Recommended when preview/dev servers also need variables: open the environment dropdown in the Desktop prompt box, hover over Local, click the gear icon, and add variables in the local environment editor.
-
-Important macOS behavior: when Desktop is launched from Dock or Finder, it does not inherit your full shell environment. It reads shell profile files only for `PATH` and a fixed set of Claude Code variables. If a variable is not taking effect, set it in `~/.claude/settings.json` or in Desktop's local environment editor, then quit and reopen the app.
-
-Desktop session types:
-
-- Local: runs on the Mac and can use the local proxy config.
-- SSH: runs Claude Code on a remote Linux/macOS host; configure the proxy on that remote host too.
-- Cloud/Remote: runs on Anthropic-managed infrastructure; local machine env vars do not automatically apply.
-
-### VS Code extension on macOS
-
-Install the Claude Code extension:
-
-1. Open VS Code.
-2. Press `Cmd+Shift+X`.
-3. Search for `Claude Code`.
-4. Install and reload VS Code if prompted.
-
-The extension bundles its own Claude Code binary for the graphical panel. To use `claude` in VS Code's integrated terminal, install the standalone CLI separately.
-
-Recommended proxy setup:
-
-1. Put `ANTHROPIC_BASE_URL` in `~/.claude/settings.json`.
-2. Fully quit VS Code:
-
-```bash
-osascript -e 'quit app "Visual Studio Code"'
-```
-
-3. Start VS Code from a terminal:
-
-```bash
-cd /path/to/project
-code .
-```
-
-Launching with `code .` helps VS Code inherit terminal environment variables. The settings file remains the more reliable option for shared CLI/extension configuration.
-
-If you configure provider/proxy auth through environment variables and the extension still shows a login prompt:
-
-- open VS Code Settings with `Cmd+,`
-- search `Claude Code login`
-- enable `Disable Login Prompt` for third-party/provider setups
-- reload the window with `Cmd+Shift+P` -> `Developer: Reload Window`
-
-The extension also has an `environmentVariables` setting, but use Claude Code settings files for shared configuration between CLI and extension.
-
-### Quick macOS verification
-
-Check the proxy itself:
-
-```bash
-curl -i https://YOUR_DOMAIN/health
-curl -i https://YOUR_DOMAIN/
-```
-
-Expected:
-
-- `/health` returns `200 OK`
-- `/` returns `404`
-
-Check Claude Code:
-
-```bash
-claude /status
-```
-
-If the CLI works but Desktop or VS Code does not:
-
-1. Quit the app completely.
-2. Confirm `~/.claude/settings.json` contains the proxy URL.
-3. Reopen the app.
-4. For VS Code, prefer launching with `code .` from Terminal.
-5. Check that you are using the Code tab in Desktop, not a normal Chat tab.
-
-### Official docs used for this section
-
-- Claude Code environment variables: `ANTHROPIC_BASE_URL`, `ANTHROPIC_AUTH_TOKEN`, and settings-file `env`.
-- Claude Code setup on macOS: native installer and Homebrew.
-- Claude Code Desktop: local environment editor, shared settings, and macOS environment inheritance behavior.
-- VS Code extension: bundled CLI, standalone CLI requirement for integrated terminal, and extension environment settings.

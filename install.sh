@@ -6,7 +6,6 @@ NGINX_SITE="/etc/nginx/sites-available/${APP_NAME}"
 NGINX_ENABLED="/etc/nginx/sites-enabled/${APP_NAME}"
 CONNECTION_FILE="/root/${APP_NAME}-connection.txt"
 
-DOMAIN=""
 EMAIL=""
 SECRET_PATH=""
 ADMIN_USER="admin"
@@ -14,7 +13,7 @@ SSH_PORT=""
 SETUP_ADMIN=1
 SETUP_SECURITY=1
 HARDEN_SSH=0
-IP_ONLY=0
+PUBLIC_IP=""
 
 red() { printf '\033[31m%s\033[0m\n' "$*" >&2; }
 green() { printf '\033[32m%s\033[0m\n' "$*"; }
@@ -26,10 +25,8 @@ usage() {
   cat <<'EOF'
 Usage:
   sudo bash install.sh
-  sudo bash install.sh --domain claudecode.example.com --email admin@example.com
 
 Options:
-  --domain DOMAIN        Proxy domain.
   --email EMAIL          Let's Encrypt email.
   --secret-path PATH     Secret URL path. Default: random.
   --admin-user USER      Non-root sudo user to create/update. Default: admin.
@@ -37,14 +34,12 @@ Options:
   --no-admin             Do not create/update admin user.
   --no-security          Do not configure ufw/fail2ban/sysctl/chrony.
   --harden-ssh           Disable root/password SSH for --admin-user. Use only after testing key login.
-  --ip-only              Use http://SERVER_IP without domain or TLS.
   -h, --help             Show this help.
 EOF
 }
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --domain) DOMAIN="${2:?}"; shift 2 ;;
     --email) EMAIL="${2:?}"; shift 2 ;;
     --secret-path) SECRET_PATH="${2:?}"; shift 2 ;;
     --admin-user) ADMIN_USER="${2:?}"; shift 2 ;;
@@ -52,7 +47,6 @@ while [[ $# -gt 0 ]]; do
     --no-admin) SETUP_ADMIN=0; shift ;;
     --no-security) SETUP_SECURITY=0; shift ;;
     --harden-ssh) HARDEN_SSH=1; shift ;;
-    --ip-only) IP_ONLY=1; shift ;;
     -h|--help) usage; exit 0 ;;
     *) die "Unknown option: $1" ;;
   esac
@@ -73,18 +67,21 @@ prompt_if_missing() {
   fi
 }
 
+public_ipv4() {
+  curl -4fsS --max-time 8 https://api.ipify.org 2>/dev/null || true
+}
+
 require_root() {
   [[ "${EUID}" -eq 0 ]] || die "Run as root: sudo bash install.sh"
   command -v apt-get >/dev/null 2>&1 || die "Only Ubuntu/Debian with apt-get is supported."
 }
 
 validate_inputs() {
-  if [[ "${IP_ONLY}" -eq 0 ]]; then
-    prompt_if_missing DOMAIN "Proxy domain"
-    prompt_if_missing EMAIL "Let's Encrypt email"
-    [[ "${DOMAIN}" =~ ^[A-Za-z0-9.-]+$ && "${DOMAIN}" == *.* ]] || die "Invalid domain: ${DOMAIN}"
-    [[ "${EMAIL}" == *@*.* ]] || die "Invalid email: ${EMAIL}"
-  fi
+  prompt_if_missing EMAIL "Let's Encrypt email"
+  [[ "${EMAIL}" == *@*.* ]] || die "Invalid email: ${EMAIL}"
+
+  PUBLIC_IP="$(public_ipv4)"
+  [[ "${PUBLIC_IP}" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]] || die "Could not detect public IPv4."
 
   if [[ -z "${SECRET_PATH}" ]]; then
     SECRET_PATH="$(od -An -N16 -tx1 /dev/urandom | tr -d ' \n')"
@@ -100,65 +97,16 @@ validate_inputs() {
   [[ "${SSH_PORT}" =~ ^[0-9]+$ ]] || die "Invalid SSH port: ${SSH_PORT}"
 }
 
-public_ipv4() {
-  curl -4fsS --max-time 8 https://api.ipify.org 2>/dev/null || true
-}
-
-domain_a_records() {
-  getent ahostsv4 "$1" | awk '{print $1}' | sort -u
-}
-
-domain_aaaa_records() {
-  getent ahostsv6 "$1" | awk '{print $1}' | sort -u
-}
-
-server_ipv6_records() {
-  ip -6 -o addr show scope global 2>/dev/null | awk '{split($4,a,"/"); print a[1]}' | sort -u
-}
-
-dns_preflight() {
-  [[ "${IP_ONLY}" -eq 1 ]] && return
-  local ip4 dns4 dns6 local6
-  ip4="$(public_ipv4)"
-  dns4="$(domain_a_records "${DOMAIN}" || true)"
-  dns6="$(domain_aaaa_records "${DOMAIN}" || true)"
-  local6="$(server_ipv6_records || true)"
-
-  info "DNS preflight"
-  echo "Server IPv4: ${ip4:-unknown}"
-  echo "Domain A: ${dns4:-none}"
-  [[ -z "${ip4}" || "$(grep -Fx "${ip4}" <<<"${dns4:-}" || true)" ]] || die "Create DNS A record first: ${DOMAIN} -> ${ip4}"
-
-  if [[ -n "${dns6}" ]]; then
-    echo "Domain AAAA: ${dns6}"
-    echo "Server IPv6: ${local6:-none}"
-    while read -r addr; do
-      [[ -z "${addr}" ]] && continue
-      if grep -Fxq "${addr}" <<<"${local6:-}"; then
-        return
-      fi
-    done <<<"${dns6}"
-    die "Domain has AAAA records not present on this server. Fix/remove AAAA before issuing TLS."
-  fi
-}
-
-server_host() {
-  if [[ "${IP_ONLY}" -eq 1 ]]; then
-    local ip4
-    ip4="$(public_ipv4)"
-    [[ -n "${ip4}" ]] && { printf '%s' "${ip4}"; return; }
-    hostname -I | awk '{print $1}'
-  else
-    printf '%s' "${DOMAIN}"
-  fi
-}
-
 install_packages() {
   info "Installing packages"
   apt-get update
   DEBIAN_FRONTEND=noninteractive apt-get install -y \
-    ca-certificates curl openssl nginx certbot python3-certbot-nginx \
-    ufw fail2ban chrony
+    ca-certificates curl openssl nginx snapd ufw fail2ban chrony
+  systemctl enable --now snapd || true
+  snap install core || true
+  snap refresh core || true
+  snap list certbot >/dev/null 2>&1 || snap install --classic certbot
+  ln -sf /snap/bin/certbot /usr/bin/certbot
 }
 
 first_authorized_keys() {
@@ -245,21 +193,21 @@ EOF
 }
 
 prepare_nginx_for_certbot() {
-  info "Preparing nginx for certificate issue"
+  info "Preparing nginx for IP certificate issue"
   install -d -m 0755 /var/www/certbot
   rm -f /etc/nginx/sites-enabled/default
-  cat > "${NGINX_SITE}" <<EOF
+  cat > "${NGINX_SITE}" <<'EOF'
 server {
-    listen 80;
-    listen [::]:80;
-    server_name ${DOMAIN};
+    listen 80 default_server;
+    listen [::]:80 default_server;
+    server_name _;
 
     location /.well-known/acme-challenge/ {
         root /var/www/certbot;
     }
 
     location / {
-        return 200 "claude-proxy bootstrap\\n";
+        return 200 "claude-proxy bootstrap\n";
         add_header Content-Type text/plain;
     }
 }
@@ -271,86 +219,21 @@ EOF
 }
 
 issue_certificate() {
-  info "Issuing TLS certificate"
+  info "Issuing Let's Encrypt IP certificate for ${PUBLIC_IP}"
   certbot certonly --webroot \
     --webroot-path /var/www/certbot \
     --non-interactive \
     --agree-tos \
     --keep-until-expiring \
     --email "${EMAIL}" \
-    -d "${DOMAIN}"
+    --deploy-hook "systemctl reload nginx" \
+    --preferred-profile shortlived \
+    --ip-address "${PUBLIC_IP}"
 }
 
 write_nginx_proxy_config() {
   info "Writing nginx proxy"
   [[ -f "${NGINX_SITE}" ]] && cp "${NGINX_SITE}" "${NGINX_SITE}.bak.$(date +%Y%m%d-%H%M%S)"
-  if [[ "${IP_ONLY}" -eq 1 ]]; then
-    cat > "${NGINX_SITE}" <<EOF
-limit_req_zone \$binary_remote_addr zone=claude_api:10m rate=30r/s;
-
-upstream anthropic_backend {
-    zone anthropic_backend 64k;
-    resolver 1.1.1.1 8.8.8.8 valid=30s ipv6=off;
-    resolver_timeout 5s;
-    server api.anthropic.com:443 resolve;
-    keepalive 16;
-    keepalive_timeout 60s;
-    keepalive_requests 100;
-}
-
-server {
-    listen 80 default_server;
-    listen [::]:80 default_server;
-    server_name _;
-
-    access_log /var/log/nginx/claude-proxy-access.log combined;
-    error_log  /var/log/nginx/claude-proxy-error.log  warn;
-
-    client_max_body_size      64m;
-    client_body_buffer_size   1m;
-    client_body_timeout       120s;
-    proxy_max_temp_file_size  0;
-    limit_req zone=claude_api burst=50 nodelay;
-
-    location / {
-        return 404;
-    }
-
-    location /${SECRET_PATH}/ {
-        rewrite ^/${SECRET_PATH}/(.*)\$ /\$1 break;
-        proxy_pass https://anthropic_backend;
-        proxy_http_version 1.1;
-        proxy_pass_request_headers on;
-        proxy_set_header Host api.anthropic.com;
-        proxy_set_header Connection "";
-        proxy_buffering off;
-        proxy_request_buffering off;
-        proxy_connect_timeout 30s;
-        proxy_send_timeout 600s;
-        proxy_read_timeout 600s;
-        proxy_ssl_server_name on;
-        proxy_ssl_name api.anthropic.com;
-        proxy_ssl_protocols TLSv1.2 TLSv1.3;
-        proxy_ssl_session_reuse on;
-    }
-
-    location = /${SECRET_PATH} {
-        return 301 /${SECRET_PATH}/;
-    }
-
-    location /health {
-        access_log off;
-        return 200 "OK\\n";
-        add_header Content-Type text/plain;
-    }
-}
-EOF
-    ln -sf "${NGINX_SITE}" "${NGINX_ENABLED}"
-    nginx -t
-    systemctl reload nginx
-    return
-  fi
-
   cat > "${NGINX_SITE}" <<EOF
 limit_req_zone \$binary_remote_addr zone=claude_api:10m rate=30r/s;
 
@@ -365,18 +248,16 @@ upstream anthropic_backend {
 }
 
 server {
-    listen 443 ssl;
-    listen [::]:443 ssl;
-    server_name ${DOMAIN};
+    listen 443 ssl default_server;
+    listen [::]:443 ssl default_server;
+    server_name _;
 
-    ssl_certificate     /etc/letsencrypt/live/${DOMAIN}/fullchain.pem;
-    ssl_certificate_key /etc/letsencrypt/live/${DOMAIN}/privkey.pem;
-    ssl_trusted_certificate /etc/letsencrypt/live/${DOMAIN}/chain.pem;
+    ssl_certificate     /etc/letsencrypt/live/${PUBLIC_IP}/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/${PUBLIC_IP}/privkey.pem;
+    ssl_trusted_certificate /etc/letsencrypt/live/${PUBLIC_IP}/chain.pem;
 
     ssl_protocols TLSv1.2 TLSv1.3;
     ssl_prefer_server_ciphers off;
-    ssl_stapling on;
-    ssl_stapling_verify on;
     resolver 1.1.1.1 8.8.8.8 valid=300s;
 
     add_header Strict-Transport-Security "max-age=63072000" always;
@@ -425,16 +306,16 @@ server {
 }
 
 server {
-    listen 80;
-    listen [::]:80;
-    server_name ${DOMAIN};
+    listen 80 default_server;
+    listen [::]:80 default_server;
+    server_name _;
 
     location /.well-known/acme-challenge/ {
         root /var/www/certbot;
     }
 
     location / {
-        return 301 https://\$host\$request_uri;
+        return 301 https://${PUBLIC_IP}\$request_uri;
     }
 }
 EOF
@@ -444,11 +325,7 @@ EOF
 }
 
 write_connection_file() {
-  local scheme host base_url
-  scheme="https"
-  [[ "${IP_ONLY}" -eq 1 ]] && scheme="http"
-  host="$(server_host)"
-  base_url="${scheme}://${host}/${SECRET_PATH}"
+  local base_url="https://${PUBLIC_IP}/${SECRET_PATH}"
   cat > "${CONNECTION_FILE}" <<EOF
 Claude Code proxy is ready.
 
@@ -464,37 +341,27 @@ PowerShell:
 claude
 
 Health check:
-curl -i ${scheme}://${host}/health
+curl -i https://${PUBLIC_IP}/health
 EOF
   chmod 600 "${CONNECTION_FILE}"
 }
 
 verify_install() {
-  local scheme host
-  scheme="https"
-  [[ "${IP_ONLY}" -eq 1 ]] && scheme="http"
-  host="$(server_host)"
   info "Verifying"
-  curl -fsS "${scheme}://${host}/health" >/dev/null
-  curl -sSI "${scheme}://${host}/" | grep -q " 404 "
+  curl -fsS "https://${PUBLIC_IP}/health" >/dev/null
+  curl -sSI "https://${PUBLIC_IP}/" | grep -q " 404 "
   systemctl is-active --quiet nginx
 }
 
 main() {
   require_root
   validate_inputs
-  dns_preflight
   install_packages
   [[ "${SETUP_ADMIN}" -eq 1 ]] && configure_admin_user
   [[ "${SETUP_SECURITY}" -eq 1 ]] && configure_security
   [[ "${HARDEN_SSH}" -eq 1 ]] && configure_ssh_hardening
-  if [[ "${IP_ONLY}" -eq 0 ]]; then
-    prepare_nginx_for_certbot
-    issue_certificate
-  else
-    rm -f /etc/nginx/sites-enabled/default
-    systemctl enable nginx
-  fi
+  prepare_nginx_for_certbot
+  issue_certificate
   write_nginx_proxy_config
   write_connection_file
   verify_install

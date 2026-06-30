@@ -58,24 +58,18 @@ If your domain has an `AAAA` record, make sure it also points to this server or 
 
 ## 3. Run the installer from your computer
 
-From your computer, run one command. Replace `SERVER_IP`, `claudecode.example.com`, and `admin@example.com`.
-
-```bash
-ssh -t root@SERVER_IP "curl -fsSL https://raw.githubusercontent.com/xsdementevx/claude-code-nginx-proxy/main/install.sh | bash -s -- --domain claudecode.example.com --email admin@example.com"
-```
-
-This works from macOS, Linux, Windows PowerShell, and Windows Terminal if `ssh` is installed.
-
-Interactive mode:
+From your computer, run one command. Replace only `SERVER_IP`.
 
 ```bash
 ssh -t root@SERVER_IP "curl -fsSL https://raw.githubusercontent.com/xsdementevx/claude-code-nginx-proxy/main/install.sh | bash"
 ```
 
-The installer then asks only for:
+This works from macOS, Linux, Windows PowerShell, and Windows Terminal if `ssh` is installed.
 
-- proxy domain, for example `claudecode.example.com`
-- Let's Encrypt email
+The installer asks for missing required values:
+
+- proxy domain, for example `claude.example.com`
+- Let's Encrypt email, for example `you@example.com`
 
 Everything else is automatic:
 
@@ -90,7 +84,7 @@ Everything else is automatic:
 If your VPS provider gives you a non-root sudo user instead of root:
 
 ```bash
-ssh -t USER@SERVER_IP "curl -fsSL https://raw.githubusercontent.com/xsdementevx/claude-code-nginx-proxy/main/install.sh | sudo bash -s -- --domain claudecode.example.com --email admin@example.com"
+ssh -t USER@SERVER_IP "curl -fsSL https://raw.githubusercontent.com/xsdementevx/claude-code-nginx-proxy/main/install.sh | sudo bash"
 ```
 
 Manual copy mode:
@@ -115,7 +109,7 @@ sudo whoami
 Only after that works, you can rerun with:
 
 ```bash
-ssh -t root@SERVER_IP "curl -fsSL https://raw.githubusercontent.com/xsdementevx/claude-code-nginx-proxy/main/install.sh | bash -s -- --domain claudecode.example.com --email admin@example.com --harden-ssh"
+ssh -t root@SERVER_IP "curl -fsSL https://raw.githubusercontent.com/xsdementevx/claude-code-nginx-proxy/main/install.sh | bash -s -- --harden-ssh"
 ```
 
 This disables root login and password auth, and allows SSH only for `admin`.

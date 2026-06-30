@@ -11,6 +11,96 @@ This kit sets up a lightweight Claude Code proxy like the current production ser
 
 The installer is `install.sh`.
 
+## Русский быстрый старт
+
+Если ты только купил VPS, тебе нужны:
+
+```text
+IP сервера     Например 203.0.113.10
+Домен          Например claude.example.com
+Почта          Например you@example.com
+```
+
+### 1. Привяжи домен к серверу
+
+В панели домена создай DNS-запись:
+
+```text
+Type: A
+Name: claude
+Value: IP_ТВОЕГО_VPS
+```
+
+Если домен `example.com`, получится `claude.example.com`.
+
+Если есть `AAAA` для этого же имени и ты не настраивал IPv6, удали `AAAA`.
+
+Подожди 5-15 минут.
+
+### 2. Запусти установку со своего компьютера
+
+Открой PowerShell на Windows или Terminal на macOS/Linux.
+
+Замени только `IP_ТВОЕГО_VPS`:
+
+```bash
+ssh -t root@IP_ТВОЕГО_VPS "curl -fsSL https://raw.githubusercontent.com/xsdementevx/claude-code-nginx-proxy/main/install.sh | bash"
+```
+
+Скрипт спросит:
+
+```text
+Proxy domain:
+```
+
+Введи домен:
+
+```text
+claude.example.com
+```
+
+Потом спросит:
+
+```text
+Let's Encrypt email:
+```
+
+Введи почту:
+
+```text
+you@example.com
+```
+
+### 3. Скопируй готовую строку
+
+В конце установки появится строка вида:
+
+```bash
+export ANTHROPIC_BASE_URL="https://claude.example.com/secret-path"
+```
+
+Для Windows PowerShell используй такой формат:
+
+```powershell
+$env:ANTHROPIC_BASE_URL = "https://claude.example.com/secret-path"
+```
+
+### 4. Проверь
+
+Открой в браузере:
+
+```text
+https://claude.example.com/health
+```
+
+Должно быть:
+
+```text
+OK
+```
+
+Если видишь `404` на `https://claude.example.com/`, это нормально.
+
 ## Beginner quick start
 
 Use this if you just bought a VPS and do not want to learn server administration.

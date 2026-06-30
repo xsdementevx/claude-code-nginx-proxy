@@ -231,6 +231,34 @@ issue_certificate() {
     --ip-address "${PUBLIC_IP}"
 }
 
+configure_certificate_renewal() {
+  info "Configuring automatic certificate renewal"
+  cat > /etc/systemd/system/claude-proxy-certbot-renew.service <<'EOF'
+[Unit]
+Description=Renew Claude proxy Let's Encrypt certificate
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/certbot renew --quiet --deploy-hook "systemctl reload nginx"
+EOF
+
+  cat > /etc/systemd/system/claude-proxy-certbot-renew.timer <<'EOF'
+[Unit]
+Description=Run Claude proxy certificate renewal twice daily
+
+[Timer]
+OnCalendar=*-*-* 03,15:17:00
+RandomizedDelaySec=1h
+Persistent=true
+
+[Install]
+WantedBy=timers.target
+EOF
+
+  systemctl daemon-reload
+  systemctl enable --now claude-proxy-certbot-renew.timer
+}
+
 write_nginx_proxy_config() {
   info "Writing nginx proxy"
   [[ -f "${NGINX_SITE}" ]] && cp "${NGINX_SITE}" "${NGINX_SITE}.bak.$(date +%Y%m%d-%H%M%S)"
@@ -362,6 +390,7 @@ main() {
   [[ "${HARDEN_SSH}" -eq 1 ]] && configure_ssh_hardening
   prepare_nginx_for_certbot
   issue_certificate
+  configure_certificate_renewal
   write_nginx_proxy_config
   write_connection_file
   verify_install

@@ -128,6 +128,41 @@ $env:ANTHROPIC_BASE_URL = "https://claude.example.com/random-secret-path"
 claude
 ```
 
+### Step 6. If you need the same anti-detect browser for login
+
+Claude Code may open your normal default browser during login. If you need authorization in a specific anti-detect browser profile, do this instead:
+
+1. Open the target anti-detect browser profile.
+2. In terminal, run:
+
+```bash
+claude setup-token
+```
+
+3. When Claude Code shows or offers a browser login URL, copy it.
+4. Paste that URL into the anti-detect browser profile.
+5. Finish login there.
+6. If the browser shows a code, paste it back into the terminal.
+7. Claude Code prints a long token. Save it somewhere private.
+
+Use it with the proxy:
+
+```bash
+export ANTHROPIC_BASE_URL="https://claude.example.com/random-secret-path"
+export CLAUDE_CODE_OAUTH_TOKEN="PASTE_TOKEN_HERE"
+claude
+```
+
+On Windows PowerShell:
+
+```powershell
+$env:ANTHROPIC_BASE_URL = "https://claude.example.com/random-secret-path"
+$env:CLAUDE_CODE_OAUTH_TOKEN = "PASTE_TOKEN_HERE"
+claude
+```
+
+Do not commit, publish, or send this token to anyone. Treat it like a password.
+
 ### How to know it worked
 
 Open this in your browser:

@@ -298,7 +298,8 @@ server {
 
     client_max_body_size      64m;
     client_body_buffer_size   1m;
-    client_body_timeout       120s;
+    client_body_timeout       300s;
+    send_timeout              1200s;
     proxy_max_temp_file_size  0;
     limit_req zone=claude_api burst=50 nodelay;
 
@@ -316,8 +317,8 @@ server {
         proxy_buffering off;
         proxy_request_buffering off;
         proxy_connect_timeout 30s;
-        proxy_send_timeout 600s;
-        proxy_read_timeout 600s;
+        proxy_send_timeout 1200s;
+        proxy_read_timeout 1200s;
         proxy_ssl_server_name on;
         proxy_ssl_name api.anthropic.com;
         proxy_ssl_protocols TLSv1.2 TLSv1.3;

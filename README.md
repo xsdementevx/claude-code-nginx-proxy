@@ -3,7 +3,7 @@
 This kit sets up a lightweight Claude Code proxy like the current production server:
 
 - Ubuntu/Debian VPS
-- `nginx` terminates HTTPS
+- `nginx` terminates HTTPS in domain mode
 - a random secret URL path hides the proxy endpoint
 - requests under that path are proxied to `https://api.anthropic.com`
 - Claude Code auth headers pass through from your local machine
@@ -13,7 +13,21 @@ The installer is `install.sh`.
 
 ## Русский быстрый старт
 
-Если ты только купил VPS, тебе нужны:
+Самый простой тест без домена:
+
+```bash
+ssh -t root@IP_ТВОЕГО_VPS "curl -fsSL https://raw.githubusercontent.com/xsdementevx/claude-code-nginx-proxy/main/install.sh | bash -s -- --ip-only"
+```
+
+Он выдаст строку вида:
+
+```bash
+export ANTHROPIC_BASE_URL="http://203.0.113.10/secret-path"
+```
+
+Минус: это HTTP без шифрования между твоим компьютером и VPS. Для постоянного использования лучше вариант с доменом ниже.
+
+Если ты хочешь HTTPS, тебе нужны:
 
 ```text
 IP сервера     Например 203.0.113.10
@@ -105,7 +119,21 @@ OK
 
 Use this if you just bought a VPS and do not want to learn server administration.
 
-You need three things:
+The simplest test does not need a domain:
+
+```bash
+ssh -t root@SERVER_IP "curl -fsSL https://raw.githubusercontent.com/xsdementevx/claude-code-nginx-proxy/main/install.sh | bash -s -- --ip-only"
+```
+
+It prints:
+
+```bash
+export ANTHROPIC_BASE_URL="http://203.0.113.10/random-secret-path"
+```
+
+Tradeoff: this is plain HTTP between your computer and the VPS. For regular use, use the HTTPS domain setup below.
+
+For HTTPS, you need three things:
 
 ```text
 SERVER_IP     The IP address from your VPS provider panel
@@ -261,6 +289,8 @@ Open this in your browser:
 https://claude.example.com/health
 ```
 
+In IP-only mode, use `http://SERVER_IP/health`.
+
 You should see:
 
 ```text
@@ -278,8 +308,8 @@ It should show `404`. That is normal.
 ### Common beginner problems
 
 - SSH says password is wrong: use the root password or SSH key from your VPS provider.
-- Certificate fails: the domain does not point to the VPS yet.
-- Certificate fails with IPv6: remove the wrong `AAAA` DNS record.
+- Certificate fails in HTTPS mode: the domain does not point to the VPS yet.
+- Certificate fails in HTTPS mode with IPv6: remove the wrong `AAAA` DNS record.
 - Browser health page does not open: check that the VPS firewall/provider allows ports `80` and `443`.
 - You closed the final output: reconnect and run `sudo cat /root/claude-proxy-connection.txt`.
 
@@ -295,7 +325,9 @@ Use a fresh Ubuntu/Debian server. The current reference server is Ubuntu with:
 
 You need initial SSH access as `root` or another sudo-capable user.
 
-## 2. Create a domain
+## 2. Create a domain for HTTPS mode
+
+Skip this section if you installed with `--ip-only`.
 
 Create a DNS `A` record pointing to the VPS public IPv4 address.
 

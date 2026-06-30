@@ -14,6 +14,7 @@ SSH_PORT=""
 SETUP_ADMIN=1
 SETUP_SECURITY=1
 HARDEN_SSH=0
+IP_ONLY=0
 
 red() { printf '\033[31m%s\033[0m\n' "$*" >&2; }
 green() { printf '\033[32m%s\033[0m\n' "$*"; }
@@ -36,6 +37,7 @@ Options:
   --no-admin             Do not create/update admin user.
   --no-security          Do not configure ufw/fail2ban/sysctl/chrony.
   --harden-ssh           Disable root/password SSH for --admin-user. Use only after testing key login.
+  --ip-only              Use http://SERVER_IP without domain or TLS.
   -h, --help             Show this help.
 EOF
 }
@@ -50,6 +52,7 @@ while [[ $# -gt 0 ]]; do
     --no-admin) SETUP_ADMIN=0; shift ;;
     --no-security) SETUP_SECURITY=0; shift ;;
     --harden-ssh) HARDEN_SSH=1; shift ;;
+    --ip-only) IP_ONLY=1; shift ;;
     -h|--help) usage; exit 0 ;;
     *) die "Unknown option: $1" ;;
   esac
@@ -76,10 +79,12 @@ require_root() {
 }
 
 validate_inputs() {
-  prompt_if_missing DOMAIN "Proxy domain"
-  prompt_if_missing EMAIL "Let's Encrypt email"
-  [[ "${DOMAIN}" =~ ^[A-Za-z0-9.-]+$ && "${DOMAIN}" == *.* ]] || die "Invalid domain: ${DOMAIN}"
-  [[ "${EMAIL}" == *@*.* ]] || die "Invalid email: ${EMAIL}"
+  if [[ "${IP_ONLY}" -eq 0 ]]; then
+    prompt_if_missing DOMAIN "Proxy domain"
+    prompt_if_missing EMAIL "Let's Encrypt email"
+    [[ "${DOMAIN}" =~ ^[A-Za-z0-9.-]+$ && "${DOMAIN}" == *.* ]] || die "Invalid domain: ${DOMAIN}"
+    [[ "${EMAIL}" == *@*.* ]] || die "Invalid email: ${EMAIL}"
+  fi
 
   if [[ -z "${SECRET_PATH}" ]]; then
     SECRET_PATH="$(od -An -N16 -tx1 /dev/urandom | tr -d ' \n')"
@@ -112,6 +117,7 @@ server_ipv6_records() {
 }
 
 dns_preflight() {
+  [[ "${IP_ONLY}" -eq 1 ]] && return
   local ip4 dns4 dns6 local6
   ip4="$(public_ipv4)"
   dns4="$(domain_a_records "${DOMAIN}" || true)"
@@ -133,6 +139,17 @@ dns_preflight() {
       fi
     done <<<"${dns6}"
     die "Domain has AAAA records not present on this server. Fix/remove AAAA before issuing TLS."
+  fi
+}
+
+server_host() {
+  if [[ "${IP_ONLY}" -eq 1 ]]; then
+    local ip4
+    ip4="$(public_ipv4)"
+    [[ -n "${ip4}" ]] && { printf '%s' "${ip4}"; return; }
+    hostname -I | awk '{print $1}'
+  else
+    printf '%s' "${DOMAIN}"
   fi
 }
 
@@ -267,6 +284,73 @@ issue_certificate() {
 write_nginx_proxy_config() {
   info "Writing nginx proxy"
   [[ -f "${NGINX_SITE}" ]] && cp "${NGINX_SITE}" "${NGINX_SITE}.bak.$(date +%Y%m%d-%H%M%S)"
+  if [[ "${IP_ONLY}" -eq 1 ]]; then
+    cat > "${NGINX_SITE}" <<EOF
+limit_req_zone \$binary_remote_addr zone=claude_api:10m rate=30r/s;
+
+upstream anthropic_backend {
+    zone anthropic_backend 64k;
+    resolver 1.1.1.1 8.8.8.8 valid=30s ipv6=off;
+    resolver_timeout 5s;
+    server api.anthropic.com:443 resolve;
+    keepalive 16;
+    keepalive_timeout 60s;
+    keepalive_requests 100;
+}
+
+server {
+    listen 80 default_server;
+    listen [::]:80 default_server;
+    server_name _;
+
+    access_log /var/log/nginx/claude-proxy-access.log combined;
+    error_log  /var/log/nginx/claude-proxy-error.log  warn;
+
+    client_max_body_size      64m;
+    client_body_buffer_size   1m;
+    client_body_timeout       120s;
+    proxy_max_temp_file_size  0;
+    limit_req zone=claude_api burst=50 nodelay;
+
+    location / {
+        return 404;
+    }
+
+    location /${SECRET_PATH}/ {
+        rewrite ^/${SECRET_PATH}/(.*)\$ /\$1 break;
+        proxy_pass https://anthropic_backend;
+        proxy_http_version 1.1;
+        proxy_pass_request_headers on;
+        proxy_set_header Host api.anthropic.com;
+        proxy_set_header Connection "";
+        proxy_buffering off;
+        proxy_request_buffering off;
+        proxy_connect_timeout 30s;
+        proxy_send_timeout 600s;
+        proxy_read_timeout 600s;
+        proxy_ssl_server_name on;
+        proxy_ssl_name api.anthropic.com;
+        proxy_ssl_protocols TLSv1.2 TLSv1.3;
+        proxy_ssl_session_reuse on;
+    }
+
+    location = /${SECRET_PATH} {
+        return 301 /${SECRET_PATH}/;
+    }
+
+    location /health {
+        access_log off;
+        return 200 "OK\\n";
+        add_header Content-Type text/plain;
+    }
+}
+EOF
+    ln -sf "${NGINX_SITE}" "${NGINX_ENABLED}"
+    nginx -t
+    systemctl reload nginx
+    return
+  fi
+
   cat > "${NGINX_SITE}" <<EOF
 limit_req_zone \$binary_remote_addr zone=claude_api:10m rate=30r/s;
 
@@ -360,7 +444,11 @@ EOF
 }
 
 write_connection_file() {
-  local base_url="https://${DOMAIN}/${SECRET_PATH}"
+  local scheme host base_url
+  scheme="https"
+  [[ "${IP_ONLY}" -eq 1 ]] && scheme="http"
+  host="$(server_host)"
+  base_url="${scheme}://${host}/${SECRET_PATH}"
   cat > "${CONNECTION_FILE}" <<EOF
 Claude Code proxy is ready.
 
@@ -376,15 +464,19 @@ PowerShell:
 claude
 
 Health check:
-curl -i https://${DOMAIN}/health
+curl -i ${scheme}://${host}/health
 EOF
   chmod 600 "${CONNECTION_FILE}"
 }
 
 verify_install() {
+  local scheme host
+  scheme="https"
+  [[ "${IP_ONLY}" -eq 1 ]] && scheme="http"
+  host="$(server_host)"
   info "Verifying"
-  curl -fsS "https://${DOMAIN}/health" >/dev/null
-  curl -sSI "https://${DOMAIN}/" | grep -q " 404 "
+  curl -fsS "${scheme}://${host}/health" >/dev/null
+  curl -sSI "${scheme}://${host}/" | grep -q " 404 "
   systemctl is-active --quiet nginx
 }
 
@@ -396,8 +488,13 @@ main() {
   [[ "${SETUP_ADMIN}" -eq 1 ]] && configure_admin_user
   [[ "${SETUP_SECURITY}" -eq 1 ]] && configure_security
   [[ "${HARDEN_SSH}" -eq 1 ]] && configure_ssh_hardening
-  prepare_nginx_for_certbot
-  issue_certificate
+  if [[ "${IP_ONLY}" -eq 0 ]]; then
+    prepare_nginx_for_certbot
+    issue_certificate
+  else
+    rm -f /etc/nginx/sites-enabled/default
+    systemctl enable nginx
+  fi
   write_nginx_proxy_config
   write_connection_file
   verify_install

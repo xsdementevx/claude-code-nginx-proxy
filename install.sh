@@ -237,7 +237,6 @@ upstream anthropic_backend {
 server {
     listen 443 ssl;
     listen [::]:443 ssl;
-    http2 on;
 
     server_name ${domain};
 

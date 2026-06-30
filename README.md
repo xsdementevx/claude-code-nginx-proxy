@@ -9,7 +9,7 @@ This kit sets up a lightweight Claude Code proxy like the current production ser
 - Claude Code auth headers pass through from your local machine
 - no Anthropic token is stored on the server
 
-The installer is `claude-code-gateway-setup.sh`.
+The installer is `install.sh`.
 
 ## 1. Prepare a VPS
 
@@ -54,12 +54,14 @@ The output must be your VPS IP. On Windows:
 Resolve-DnsName claudecode.example.com
 ```
 
+If your domain has an `AAAA` record, make sure it also points to this server or remove it. Let's Encrypt and some clients may prefer IPv6 when it exists.
+
 ## 3. Copy the installer to the server
 
 From your local machine:
 
 ```bash
-scp claude-code-gateway-setup.sh root@SERVER_IP:/root/
+scp install.sh root@SERVER_IP:/root/
 ```
 
 Then connect:
@@ -71,7 +73,7 @@ ssh root@SERVER_IP
 Make the script executable:
 
 ```bash
-chmod +x /root/claude-code-gateway-setup.sh
+chmod +x /root/install.sh
 ```
 
 ## 4. Run the installer
@@ -79,7 +81,7 @@ chmod +x /root/claude-code-gateway-setup.sh
 On the server:
 
 ```bash
-sudo /root/claude-code-gateway-setup.sh
+sudo /root/install.sh
 ```
 
 The script asks for:
@@ -100,6 +102,8 @@ Create/update a non-root sudo admin user: yes
 Configure UFW, fail2ban, sysctl, and chrony: yes
 Disable root/password SSH: only after you tested key login in another terminal
 ```
+
+If you create an admin user, paste an SSH public key when the script asks. Without a key or password, the new user cannot log in.
 
 ## 5. SSH safety step
 
